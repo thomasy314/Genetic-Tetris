@@ -45,8 +45,8 @@ config = {
   'cell_size':  20,
   'cols':    10,
   'rows':    24,
-  'delay':  5,
-  'maxfps':  math.inf
+  'delay':  750,
+  'maxfps':  30
 }
 
 colors = [
@@ -339,21 +339,15 @@ Press space to continue""")
             +key):
               key_actions[key]()
 
-
-      for action in self.actions:
-        action = action.upper()
-        if action in key_actions:
-          key_actions[action]()
-      self.actions = []
-
-      '''if( len(self.actions)>0 ):
+      # AI input	
+      if( len(self.actions)>0 ):
         action = self.actions[0].upper()
         if action in key_actions:
           key_actions[action]()
-          self.actions.pop(0)'''
+        self.actions.pop(0)
         
           
-      #dont_burn_my_cpu.tick(config['maxfps'])
+      dont_burn_my_cpu.tick(config['maxfps'])
 
   def get_state(self):
     return {"board": numpy.copy(self.board), 
