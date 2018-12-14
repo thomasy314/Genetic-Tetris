@@ -1,6 +1,8 @@
 # Genetic-Tetris
 Genetic algorithm used to play Tetris
 
+[Practicum write up](https://github.com/thyo9470/Genetic-Tetris/blob/master/Tetris_AI.pdf)
+
 **Instructions to run**
 
 Run "python main.py" to train the genetic algorithm
