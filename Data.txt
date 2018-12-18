@@ -1,0 +1,2 @@
+Generation 1 score: 1851.76
+Generation 2 score: 1861.1

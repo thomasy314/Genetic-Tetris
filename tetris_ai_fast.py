@@ -2,6 +2,15 @@
 
 from collections import defaultdict, OrderedDict
 import pygame, numpy, time, threading, random
+import tetris
+
+config = {
+  'cell_size':  20,
+  'cols':    10,
+  'rows':    24,
+  'delay':  750,
+  'maxfps':  30
+}
 
 # Rotates a shape clockwise
 def rotate_clockwise(shape):
@@ -22,15 +31,23 @@ def check_collision(board, shape, offset):
   return False
 
 # Used for adding a stone to the board
-def join_matrixes(mat1, mat2, mat2_off):
+def join_matrixes(mat1, mat2, mat2_off, remove=False):
   off_x, off_y = mat2_off
   for cy, row in enumerate(mat2):
     for cx, val in enumerate(row):
-      try:
-        mat1[cy+off_y-1  ][cx+off_x] += val
-      except IndexError:
-        print("out of bounds join")
+      if val:
+        set_val = val if not remove else 0
+        try:
+          mat1[cy+off_y-1  ][cx+off_x] = set_val
+        except IndexError:
+          print("out of bounds join")
   return mat1
+
+
+# clearing a row for getting points
+def remove_row(board, row):
+  del board[row]
+  return [[0 for i in range(config['cols'])]] + board
 
 f = open("Data.txt", "w+")
 
@@ -39,32 +56,39 @@ f = open("Data.txt", "w+")
 
   Fields:
     name - "Crehg"
-    board --------- the current board layout
-    cur_gen ------- the current generation number (starts at 1)
-    cur_unit ------ the current gene being tested in the generation
-    features ------ features to base ai on
-    feature_func -- the functions corresponding with each feature
-    gen_weights --- ordered dictionary of weight for the current generation
-    mutation_val -- the range for which a gene's trait can be mutated if pick for mutation
-    num_units ----- the number of genes to gave in each generation (initial generation has 10x this)
-    stone --------- the current stone
-    stone_x ------- current stone x position
-    stone_y ------- current stone y position
+    board --------- Current board layout
+    cur_gen ------- Current generation number (starts at 1)
+    cur_unit ------ Current gene being tested in the generation
+    features ------ Features to base ai on
+    feature_func -- Functions corresponding with each feature
+    gen_weights --- Ordered dictionary of weight for the current generation
+    height -------- Height of the pygame window
+    mutation_val -- The range for which a gene's trait can be mutated if pick for mutation
+    next_stones --- A list of tetriminoes to tell the game which is next
+    num_units ----- The number of genes to gave in each generation (initial generation has 10x this)
+    score --------- Current game score
+    stone --------- The current stone
+    stone_x ------- Current stone x position
+    stone_y ------- Current stone y position
     tetris_app ---- The tetris game the ai interacts with
-    weights ------- weight gene for ai to make decisions with
+    weights ------- Weight gene for ai to make decisions with
+    width --------- Width of the pygame window
 
 '''
 class TetrisAI(object):
   
-  def __init__(self, tetris_app):
+  def __init__(self, tetris_app=None):
     self.name = "Crehg"
     self.tetris_app = tetris_app
 
-    #self.screen = pygame.display.set_mode((200, 480 ))
+    pygame.init()
+    self.width = config['cell_size']*config['cols']
+    self.height = config['cell_size']*config['rows']
+    self.screen = pygame.display.set_mode((self.width, self.height ))
 
     ''' set fetures wanted here '''
-    self.features = ("max_height", "cumulative_height", "relative_height", "roughness", "hole_count", "rows_cleared")
-    #self.features = ("cumulative_height", "roughness", "hole_count", "rows_cleared")
+    self.features = tuple()
+    self.all_features = ("max_height", "cumulative_height", "relative_height", "roughness", "hole_count", "rows_cleared")
 
     self.feature_func = {"max_height" : self.get_max_height, 
                          "cumulative_height" : self.get_cumulative_height, 
@@ -72,13 +96,21 @@ class TetrisAI(object):
                          "roughness" : self.get_roughness, 
                          "hole_count" : self.get_hole_count, 
                          "rows_cleared" : self.get_rows_cleared}
+  '''
+    ------------------------------------
+              Pygame Display
+    ------------------------------------
+  '''
 
 
   def draw_matrix(self, matrix, offset, color=(255,255,255)):
+
     off_x, off_y  = offset
     for y, row in enumerate(matrix):
       for x, val in enumerate(row):
         if val:
+          if color == (255, 255, 255):
+            color = tetris.colors[val]
           pygame.draw.rect(
             self.screen,
             color,
@@ -89,9 +121,27 @@ class TetrisAI(object):
                 20, 
               20,
               20),0)
+    self.show_score(str(self.score))
+
+  # Show given message at the center of the board (for losing)
+  def show_score(self, msg):
+    for i, line in enumerate(msg.splitlines()):
+      msg_image =  pygame.font.Font(
+        pygame.font.get_default_font(), 12).render(
+          line, False, (255,255,255), (0,0,0))
+    
+      msgim_center_x, msgim_center_y = msg_image.get_size()
+      msgim_center_x //= 2
+      msgim_center_y //= 2
+    
+      self.screen.blit(msg_image, (
+        (self.width/10),
+        (self.height)/10))
 
   '''
-    Getters and setters
+    ------------------------------------
+            Getters and setters
+    ------------------------------------
   '''
 
   def set_weights(self, weight_dict):
@@ -118,37 +168,75 @@ class TetrisAI(object):
     return (self.stone, self.stone_x, self.stone_y)
 
   '''
-    Keyboard/Action controller
+    ------------------------------------
+                  Gameplay
+    ------------------------------------
   '''
 
-  def self_train(self):
-    
-    
+  '''
+    self_train: 
+      1. tests all moves that could be made
+      2. makes the best move for the current gene
+      3. gets the next tetromino (stone)
+      4. check for end
+      5. draws board (optional)
 
-  def make_move(self, training=True):
-    
-    while True:
-      cur_state = self.tetris_app.get_state()
+    parameters:
+      display - Should it display the game running
+      max_moves - Maximum number of moves for a gene until it moves on.
+      training_rounds - Number of times a single gene is used. The more time the more accurate the score is
+  '''
 
-      self.set_board(cur_state["board"])
-      self.set_stone(cur_state["stone"], cur_state["stone_x"], cur_state["stone_y"])
-  
-      if not cur_state["needs_actions"]:
-        continue
+  def self_train(self, training_rounds=2, max_moves=500, display=True):
 
-      actions = []
-
-      if cur_state["gameover"] and training:
-        self.load_next_unit( cur_state["score"] )
-        actions.append("space")
-
+    moves_taken = 0
+    cur_round = 1
+    round_scores = []
  
+    while True: 
+
+      # test all possible moves
+      possible_moves = self.get_possible_moves()
+      move_scores = self.get_move_scores(possible_moves)
+
+      # make best move
+      self.make_move(move_scores, possible_moves)
+      moves_taken += 1
   
-      possible_boards = self.get_possible_boards()
-      board_scores = self.get_board_scores(possible_boards)
-      actions.extend(self.get_actions_from_scores(board_scores))
+      # get the next stone
+      self.stone = self.get_next_stone()
+      self.stone_x = int(config['cols'] / 2 - len(self.stone[0])/2)
+
+      # gameover or taken max number of moves
+      if check_collision(self.board, self.stone, (self.stone_x, self.stone_y)) or moves_taken == max_moves:
+
+        round_scores.append(self.score)
+        print("round ", cur_round, " finished of ", training_rounds, "|| Average Score: ", sum(round_scores)/len(round_scores))
+        if cur_round == training_rounds:
+          cur_round = 0 
+          self.load_next_unit( sum(round_scores)/len(round_scores) )
+          round_scores.clear()
+          mean_score = 0
+
+        moves_taken = 0
+        cur_round += 1
+        self.init_game()
+
+      # draw display
+      if display:
+        self.screen.fill((0,0,0))
+        self.draw_matrix(self.board, (0,0))
+        self.draw_matrix(self.stone, (self.stone_x, self.stone_y), (0, 255, 0))
+        pygame.display.update()
   
-      self.tetris_app.add_actions(actions)
+
+  def get_next_stone(self):
+    if not hasattr(self, "next_stones") or len(self.next_stones) <= 0:
+      #print("new")
+      self.next_stones = numpy.random.permutation( len(tetris.tetris_shapes) )
+    next_stone, self.next_stones = self.next_stones[-1], self.next_stones[:-1]
+
+    return tetris.tetris_shapes[next_stone]
 
     
   '''
@@ -170,7 +258,7 @@ class TetrisAI(object):
       else:
         break
     return stone_x
- 
+
   '''
     Rotate stone if no collision
   ''' 
@@ -194,74 +282,80 @@ class TetrisAI(object):
   def drop(self, board, stone, stone_x, stone_y):
 
     stone_y += 1
-    if check_collision(board,
+    if not check_collision(board,
                        stone,
                        (stone_x, stone_y)):
-      board = join_matrixes(
-        board,
-        stone,
-        (stone_x, stone_y))
-    else:
-      self.drop(board, stone, stone_x, stone_y)
-    return board, stone_y
+      stone_y = self.drop(board, stone, stone_x, stone_y)
+    return stone_y
 
   '''
     Makes every possible move
     Returns a list of boards resulting from each move
   '''
 
-  def get_possible_boards(self):
+  def get_possible_moves(self):
     if not (hasattr(self, "board") and hasattr(self, "stone")):
       raise ValueError("either board or stone do not exist for TetrisAI")
+
+    moves = []
     
-    cur_state = self.tetris_app.get_state()
-
-    self.set_board(cur_state["board"])
-    self.set_stone(cur_state["stone"], cur_state["stone_x"], cur_state["stone_y"])
-
-    # make temp board and stone info to test moves on
-    temp_board = numpy.copy(self.board)
-    temp_stone = numpy.copy(self.stone)
-
-    temper = numpy.copy(temp_stone)
-
-    temp_x = self.stone_x
-    temp_y = self.stone_y
-
-    # contains all the board orientations possible with the current stone
-    boards = []
-
-    # rotations
-    for j in range(4):
-
-      # drop for every column 
+    for rotation in range(4):
+    
       for i in range(len(self.board[0])):
 
-        temp_x = self.move(i, temp_board, temp_stone, temp_x, temp_y)
-        temp_board, temp_y = self.drop(temp_board, temp_stone, temp_x, temp_y)
+        new_x = self.move(i, self.board, self.stone, self.stone_x, self.stone_y)
+        new_y = self.drop(self.board, self.stone, new_x, self.stone_y) 
+        join_matrixes(self.board, self.stone, (new_x, new_y))
 
+        new_move = {"x":new_x, "y":new_y, "stone":numpy.copy(self.stone)}
+        moves.append(new_move)
 
-        boards.append(temp_board)
+        join_matrixes(self.board, self.stone, (new_x, new_y), remove=True)
 
-        temp_board = numpy.copy(self.board)
-        temp_x = self.stone_x
-        temp_y = self.stone_y
+      self.stone = self.rotate_stone(self.board, self.stone, self.stone_x, self.stone_y)
 
-      temp_stone = self.rotate_stone(temp_board, temp_stone, temp_x, temp_y)
-
-
-    return boards
+    return moves
 
   # gets a list of scores from a list of board  
 
-  def get_board_scores(self, boards):
+  def get_move_scores(self, moves):
     scores = []
 
-    for board in boards:
-      new_score = self.eval_board(board)
+    for mov in moves:
+      
+      join_matrixes(self.board, mov["stone"], (mov["x"], mov["y"]))
+
+      new_score = self.eval_board(self.board)
+
+      join_matrixes(self.board, mov["stone"], (mov["x"], mov["y"]), remove=True)
       scores.append( new_score )
 
     return scores 
+
+  # takes possible moves and their scores and makes the best move
+
+  def make_move(self, move_scores, possible_moves):
+    
+    best_index = move_scores.index( max(move_scores) )      
+    best_move = possible_moves[best_index]
+
+    join_matrixes( self.board, best_move["stone"], (best_move["x"], best_move["y"]))
+
+
+    for i, row in enumerate(self.board):
+      if 0 not in row:
+        self.score += 10
+        self.board = remove_row ( self.board, i)
+
+    '''while True:
+      for i, row in enumerate(self.board[:-1]):
+        if 0 not in row:
+          self.score += 10
+          self.board = remove_row(
+            self.board, i)
+          break
+      else:
+        break'''
 
   # given scores what move should be made
 
@@ -409,17 +503,17 @@ class TetrisAI(object):
   Creates a gene with random weights
   if seeded it creates the weights based off the seeded gene
   '''
-  def random_weights(self, seeded=False):
+  def random_weights(self, seed=False, seed_range=0.1):
    
     weights = ()
 
-    if seeded != False:
-      for val in seeded:
-        weights = weights + (random.uniform(-0.1, 0.1) + val,)
-      return weights
-
-    for f in self.features:
-      weights = weights + (random.uniform(-1, 1),)
+    
+    if seed:
+      for val in seed:
+        weights = weights + (random.uniform(-seed_range, seed_range) + val,)
+    else:
+      for f in self.features:
+        weights = weights + (random.uniform(-1, 1),)
  
     return weights
 
@@ -437,30 +531,56 @@ class TetrisAI(object):
   mutation_val = the range for which a gene can be mutated
   seed = If you want to test a specific gene
   '''
-  def start(self, num_units, mutation_val=0.05, seed=False):
+  def start(self, num_units, seed, mutation_val=0.05, init_pop_const=10):
 
-    if seed:
-      if not (isinstance(seed, tuple) or len(seed) != len(self.features)):
-        raise ValueError('Seed not properly formatted. Make sure it is a tuple of floats with the same number of values as there are features').format(len(self.features))
+    self.num_units = num_units
+    self.gen_weights = OrderedDict()
+    self.cur_gen = 1
+    self.cur_unit = -1
+    self.mutation_val = mutation_val
 
-      self.load_weights(seed)
-      self.make_move(training=False) 
+    # get features from input
+    for feature, val in seed.items():
+      if feature in self.all_features:
+        self.features = self.features + (feature,)
+      else:
+        raise ValueError(featuure + " is not a built in feature.\nPossible features: ")
+        
+
+    # test if we need to generate the feature weights
+    gene = tuple(seed.values())
+
+    if gene[0] != -999:
+
+      self.gen_weights[ gene ] = 0
+      for i in range(num_units * init_pop_const - 1):
+        self.gen_weights[ self.random_weights(seed=gene) ] = 0
 
     else:
 
-      self.num_units = num_units
-      self.gen_weights = OrderedDict()
-      self.cur_gen = 1
-      self.cur_unit = -1
-      self.mutation_val = mutation_val
-  
       # creating random initial population
-      for i in range(num_units * 10):
+      for i in range(num_units * init_pop_const):
         self.gen_weights[ self.random_weights() ] = 0
   
-      self.load_next_unit(0)
-  
-      self.make_move()
+
+    self.load_next_unit(0)
+    self.init_game()
+    self.self_train()
+
+  '''
+    Starts a new game
+      - new board
+      - new stone
+  '''  
+  def init_game(self):
+    self.score = 0
+    self.board = [ [ 0 for w in range(config["cols"]) ] for h in range(config["rows"]-1) ]
+    self.board.append( [1 for w in range(config["cols"])] )
+    self.stone = self.get_next_stone()
+    self.stone_x = int(config['cols'] / 2 - len(self.stone[0])/2)
+    self.stone_y = 0
+
+    return
 
   '''
   Saves data from previous geneartion, preforms selection, crossover, and mutation

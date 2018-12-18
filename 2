@@ -56,11 +56,11 @@ f = open("Data.txt", "w+")
 '''
 class TetrisAI(object):
   
-  def __init__(self, tetris_app):
+  def __init__(self, tetris_app=None):
     self.name = "Crehg"
     self.tetris_app = tetris_app
 
-    #self.screen = pygame.display.set_mode((200, 480 ))
+    self.screen = pygame.display.set_mode((200, 480 ))
 
     ''' set fetures wanted here '''
     self.features = ("max_height", "cumulative_height", "relative_height", "roughness", "hole_count", "rows_cleared")
@@ -123,7 +123,18 @@ class TetrisAI(object):
 
   def self_train(self):
     
+    print("start")
+
+    possible_boards = self.get_possible_boards()
+    board_scores = self.get_board_scores(possible_boards)
+
+    best_index = board_scores.index(max(board_scores))
+    best_board = possible_boards[best_index]
+
+
+    print(best_board)
     
+    print("done")
 
   def make_move(self, training=True):
     
@@ -214,10 +225,10 @@ class TetrisAI(object):
     if not (hasattr(self, "board") and hasattr(self, "stone")):
       raise ValueError("either board or stone do not exist for TetrisAI")
     
-    cur_state = self.tetris_app.get_state()
+    '''cur_state = self.tetris_app.get_state()
 
     self.set_board(cur_state["board"])
-    self.set_stone(cur_state["stone"], cur_state["stone_x"], cur_state["stone_y"])
+    self.set_stone(cur_state["stone"], cur_state["stone_x"], cur_state["stone_y"])'''
 
     # make temp board and stone info to test moves on
     temp_board = numpy.copy(self.board)
@@ -237,9 +248,14 @@ class TetrisAI(object):
       # drop for every column 
       for i in range(len(self.board[0])):
 
+
         temp_x = self.move(i, temp_board, temp_stone, temp_x, temp_y)
         temp_board, temp_y = self.drop(temp_board, temp_stone, temp_x, temp_y)
-
+  
+        '''self.screen.fill((0,0,0))
+        self.draw_matrix(temp_board, (0,0))
+        self.draw_matrix(self.stone, (self.stone_x, self.stone_y))
+        pygame.display.update()'''
 
         boards.append(temp_board)
 
@@ -444,7 +460,18 @@ class TetrisAI(object):
         raise ValueError('Seed not properly formatted. Make sure it is a tuple of floats with the same number of values as there are features').format(len(self.features))
 
       self.load_weights(seed)
-      self.make_move(training=False) 
+
+      width = 10
+      height = 22
+
+      self.board = [ [ 0 for w in range(width) ] for h in range(height) ]
+      self.board.append( [1 for w in range(width)] )
+      self.stone = [ [1, 1, 1],[0, 1, 0] ]
+      self.stone_x = 3
+      self.stone_y = 0
+
+      self.self_train()
+      #self.make_move(training=False) 
 
     else:
 
@@ -460,7 +487,8 @@ class TetrisAI(object):
   
       self.load_next_unit(0)
   
-      self.make_move()
+      self.self_train()
+      #self.make_move()
 
   '''
   Saves data from previous geneartion, preforms selection, crossover, and mutation
